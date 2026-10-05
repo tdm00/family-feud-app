@@ -194,3 +194,15 @@ dist
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,node,visualstudiocode
+
+# App database and browser-test output
+data/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+playwright-report/
+test-results/
+blob-report/
+.corepack/
+
