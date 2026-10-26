@@ -326,4 +326,69 @@ describe("game api", () => {
     const afterReset = await json<{ prompt: string }[]>(await host3("/api/host/questions"));
     expect(afterReset.map((questionRow) => questionRow.prompt).sort()).toEqual(["Name a color", "Name a common pet"]);
   });
+
+  it("imports a question file or saves nothing when a prompt is repeated", async () => {
+    const dbPath = path.join(mkdtempSync(path.join(tmpdir(), "feud-")), "game.sqlite");
+    const server = await start(dbPath);
+    const login = await fetch(`${server.base}/api/host/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+    const hostCookie = cookieHeader(login);
+    const host = (pathName: string, init?: RequestInit) =>
+      fetch(`${server.base}${pathName}`, {
+        ...init,
+        headers: { "content-type": "application/json", cookie: hostCookie, ...(init?.headers ?? {}) },
+      });
+
+    const denied = await fetch(`${server.base}/api/host/questions/import`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        questions: [{ prompt: "Name a fruit", answers: [{ text: "Apple", points: 30 }] }],
+      }),
+    });
+    expect(denied.status).toBe(401);
+
+    const imported = await host("/api/host/questions/import", {
+      method: "POST",
+      body: JSON.stringify({
+        questions: [
+          {
+            prompt: "Name a fruit",
+            answers: [
+              { text: "Apple", points: 30, aliases: ["Apples"] },
+              { text: "Banana", points: 20 },
+            ],
+          },
+          { prompt: "Name a pet", answers: [{ text: "Dog", points: 40, aliases: ["Puppy"] }] },
+        ],
+      }),
+    });
+    expect(imported.status).toBe(201);
+    const body = await json<{
+      imported: number;
+      questions: { prompt: string; usedAt: number | null; answers: { text: string; rank: number; points: number }[] }[];
+    }>(imported);
+    expect(body.imported).toBe(2);
+    expect(body.questions[0]?.answers.map((answer) => [answer.rank, answer.text, answer.points])).toEqual([
+      [1, "Apple", 30],
+      [2, "Banana", 20],
+    ]);
+    expect(body.questions.every((question) => question.usedAt === null)).toBe(true);
+
+    const duplicate = await host("/api/host/questions/import", {
+      method: "POST",
+      body: JSON.stringify({
+        questions: [
+          { prompt: "name a fruit", answers: [{ text: "Pear", points: 10 }] },
+          { prompt: "Name a color", answers: [{ text: "Blue", points: 25 }] },
+        ],
+      }),
+    });
+    expect(duplicate.status).toBe(409);
+    const stored = await json<{ prompt: string }[]>(await host("/api/host/questions"));
+    expect(stored.map((question) => question.prompt).sort()).toEqual(["Name a fruit", "Name a pet"]);
+  });
 });

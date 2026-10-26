@@ -31,6 +31,27 @@ const QuestionInputSchema = z.object({
   answers: z.array(AnswerInput).min(1).max(8),
 });
 
+const QuestionImportSchema = z.object({
+  questions: z
+    .array(
+      z.object({
+        prompt: z.string(),
+        answers: z
+          .array(
+            z.object({
+              text: z.string(),
+              points: z.number().int(),
+              aliases: z.array(z.string()).optional(),
+            }),
+          )
+          .min(1)
+          .max(8),
+      }),
+    )
+    .min(1)
+    .max(100),
+});
+
 function findWebDist(): string | null {
   const candidates = [
     path.resolve(process.cwd(), "apps/web/dist"),
@@ -237,6 +258,14 @@ export async function createApp(config: AppConfig): Promise<{
     game.deleteQuestion(params.id);
     broadcast();
     return { ok: true };
+  });
+
+  app.post("/api/host/questions/import", async (req, reply) => {
+    requireHost(req);
+    const body = QuestionImportSchema.parse(req.body);
+    const created = game.importQuestions(body.questions);
+    broadcast();
+    return reply.code(201).send({ imported: created.length, questions: created });
   });
 
   app.post("/api/host/questions/reorder", async (req) => {

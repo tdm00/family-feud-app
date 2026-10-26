@@ -1,0 +1,11 @@
+{
+  "questions": [
+    {
+      "prompt": "Name a fruit",
+      "answers": [
+        { "text": "Apple", "points": 30, "aliases": ["Apples"] },
+        { "text": "Banana", "points": 20, "aliases": [] }
+      ]
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 
@@ -17,7 +17,9 @@ export function AdminPage() {
   const [used, setUsed] = useState<"all" | "used" | "unused">("all");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
+  const importRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     api<{ host: boolean }>("/api/session")
@@ -91,6 +93,26 @@ export function AdminPage() {
     }
   }
 
+  async function importFile(file: File) {
+    let body: unknown;
+    try {
+      body = JSON.parse(await file.text()) as unknown;
+    } catch {
+      setNotice(null);
+      setError("That file is not valid JSON");
+      return;
+    }
+    try {
+      const result = await api<{ imported: number }>("/api/host/questions/import", { body });
+      setNotice(`Imported ${result.imported} ${result.imported === 1 ? "question" : "questions"}`);
+      setError(null);
+      setVersion((value) => value + 1);
+    } catch (err) {
+      setNotice(null);
+      setError(err instanceof Error ? err.message : "Could not import questions");
+    }
+  }
+
   async function remove(id: string) {
     if (!window.confirm("Delete this question?")) return;
     try {
@@ -148,6 +170,7 @@ export function AdminPage() {
         </Link>
       </header>
       {error ? <p className="text-red-300">{error}</p> : null}
+      {notice ? <p className="text-gold">{notice}</p> : null}
       <div className="flex flex-wrap gap-2">
         <input className="min-h-11 flex-1 rounded-lg bg-white/10 px-3" placeholder="Search" value={q} onChange={(event) => setQ(event.target.value)} />
         <select className="min-h-11 rounded-lg bg-white/10 px-3" value={used} onChange={(event) => setUsed(event.target.value as "all" | "used" | "unused")}>
@@ -158,6 +181,21 @@ export function AdminPage() {
         <button className="min-h-11 rounded-lg bg-gold px-4 font-semibold text-ink" type="button" onClick={startNew}>
           New question
         </button>
+        <button className="min-h-11 rounded-lg bg-white/10 px-4" type="button" onClick={() => importRef.current?.click()}>
+          Upload JSON
+        </button>
+        <input
+          ref={importRef}
+          data-testid="question-import"
+          className="hidden"
+          type="file"
+          accept="application/json,.json"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (file) void importFile(file);
+          }}
+        />
       </div>
       <ul className="grid gap-2">
         {questions.map((question, index) => (

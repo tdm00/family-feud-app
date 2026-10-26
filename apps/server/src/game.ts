@@ -52,6 +52,11 @@ export type QuestionInput = {
   answers: AnswerInput[];
 };
 
+export type QuestionImportItem = {
+  prompt: string;
+  answers: { text: string; points: number; aliases?: string[] }[];
+};
+
 export type QuestionDto = {
   id: string;
   prompt: string;
@@ -549,6 +554,53 @@ export class GameStore {
       this.insertAnswers(id, prepared.answers);
     });
     return this.questionDto(id);
+  }
+
+  importQuestions(items: QuestionImportItem[]): QuestionDto[] {
+    if (items.length < 1 || items.length > 100) throw new GameError(400, "Import 1 to 100 questions");
+    return this.tx(() => {
+      const existingPrompts = new Set(
+        this.db
+          .select()
+          .from(questions)
+          .all()
+          .map((row) => row.prompt.trim().replace(/\s+/g, " ").toLowerCase()),
+      );
+      const seen = new Set<string>();
+      let sortOrder = this.db.select().from(questions).all().reduce((max, row) => Math.max(max, row.sortOrder), -1) + 1;
+      const ids: string[] = [];
+      for (const item of items) {
+        const prepared = this.prepareQuestion({
+          prompt: item.prompt,
+          answers: item.answers.map((answer, index) => ({
+            text: answer.text,
+            points: answer.points,
+            rank: index + 1,
+            aliases: answer.aliases ?? [],
+          })),
+        });
+        const key = prepared.prompt.toLowerCase();
+        if (seen.has(key) || existingPrompts.has(key)) {
+          throw new GameError(409, `"${prepared.prompt}" is already in this file or the question bank`);
+        }
+        seen.add(key);
+        const id = nid();
+        this.db
+          .insert(questions)
+          .values({
+            id,
+            prompt: prepared.prompt,
+            usedAt: null,
+            sortOrder,
+            createdAt: Date.now(),
+          })
+          .run();
+        this.insertAnswers(id, prepared.answers);
+        ids.push(id);
+        sortOrder += 1;
+      }
+      return ids.map((id) => this.questionDto(id));
+    });
   }
 
   updateQuestion(id: string, input: QuestionInput): QuestionDto {
