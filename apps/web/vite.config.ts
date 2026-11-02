@@ -1,8 +1,20 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
+const rootPackage = JSON.parse(readFileSync(path.resolve(__dirname, "../../package.json"), "utf8")) as {
+  version: string;
+};
+
+if (!/^\d+$/.test(rootPackage.version)) {
+  throw new Error("Root package.json version must be a whole number");
+}
+
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(rootPackage.version),
+  },
   plugins: [react()],
   resolve: {
     alias: {
